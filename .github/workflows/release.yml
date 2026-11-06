@@ -1,0 +1,43 @@
+name: Build installer
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install NSIS
+        run: sudo apt-get update -q && sudo apt-get install -y -q nsis
+
+      - name: Work out version
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="$(grep -oP "AppVersion = '\K[0-9.]+" ChillMode.ps1)"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Build Setup.exe
+        run: |
+          mkdir -p dist
+          cd installer && makensis -V2 -DVERSION=${{ steps.ver.outputs.version }} ChillMode.nsi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ChillMode-Setup-${{ steps.ver.outputs.version }}
+          path: dist/*.exe
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.exe \
+            --title "Chill Mode ${{ steps.ver.outputs.version }}" \
+            --notes "Download **ChillMode-Setup-${{ steps.ver.outputs.version }}.exe**, run it and accept the admin prompt."

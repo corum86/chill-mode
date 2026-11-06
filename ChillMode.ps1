@@ -32,7 +32,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $script:AppName    = 'Chill Mode'
-$script:AppVersion = '1.0.0'
+$script:AppVersion = '1.1.0'
 $script:CliMode    = [bool]($Preset -or $Restore)
 
 # ---------------------------------------------------------------------------
@@ -1092,10 +1092,13 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
-        <StackPanel>
+        <StackPanel Orientation="Horizontal">
+          <Image x:Name="HeaderIcon" Width="52" Height="52" Margin="0,0,14,0" VerticalAlignment="Center"/>
+          <StackPanel>
           <TextBlock Text="Chill Mode" FontSize="26" FontWeight="SemiBold" Foreground="White"/>
           <TextBlock Text="Every battery setting in one place. Power-plan values only change the 'On battery' side - plugged-in performance stays the same."
-                     Foreground="#B9D7CE" TextWrapping="Wrap" Margin="0,4,0,0" MaxWidth="560" HorizontalAlignment="Left"/>
+                     Foreground="#B9D7CE" TextWrapping="Wrap" Margin="0,4,0,0" MaxWidth="520" HorizontalAlignment="Left"/>
+          </StackPanel>
         </StackPanel>
         <Grid Grid.Column="1" VerticalAlignment="Center">
           <Grid.ColumnDefinitions>
@@ -1182,6 +1185,17 @@ foreach ($n in 'StBattery', 'StSource', 'StDisplay', 'StPlan', 'StGpu', 'BtnMax'
     Set-Variable -Name "ui$n" -Value $script:Win.FindName($n) -Scope Script
 }
 $script:LogBox = $uiLogBox
+
+$iconPath = Join-Path $PSScriptRoot 'assets\ChillMode.ico'
+if (Test-Path $iconPath) {
+    try {
+        $iconUri = New-Object Uri $iconPath
+        $script:Win.Icon = [Windows.Media.Imaging.BitmapFrame]::Create($iconUri)
+        $decoder = New-Object Windows.Media.Imaging.IconBitmapDecoder($iconUri, 'None', 'OnLoad')
+        $big = $decoder.Frames | Sort-Object { $_.PixelWidth } -Descending | Select-Object -First 1
+        $script:Win.FindName('HeaderIcon').Source = $big
+    } catch { }
+}
 
 $bc = New-Object Windows.Media.BrushConverter
 function Brush([string]$Hex) { $bc.ConvertFromString($Hex) }
