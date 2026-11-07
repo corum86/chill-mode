@@ -32,8 +32,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $script:AppName    = 'Chill Mode'
-$script:AppVersion = '1.1.0'
+$script:AppVersion = '1.1.1'
 $script:CliMode    = [bool]($Preset -or $Restore)
+$script:ScriptPath = $PSCommandPath
 
 # ---------------------------------------------------------------------------
 # Elevation + STA (WPF needs a single-threaded apartment)
@@ -67,6 +68,33 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
+[ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IChillPropertyStore
+{
+    [PreserveSig] int GetCount(out uint count);
+    [PreserveSig] int GetAt(uint index, out ChillPropertyKey key);
+    [PreserveSig] int GetValue(ref ChillPropertyKey key, out ChillPropVariant value);
+    [PreserveSig] int SetValue(ref ChillPropertyKey key, ref ChillPropVariant value);
+    [PreserveSig] int Commit();
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+public struct ChillPropertyKey
+{
+    public Guid fmtid;
+    public uint pid;
+    public ChillPropertyKey(Guid f, uint p) { fmtid = f; pid = p; }
+}
+
+[StructLayout(LayoutKind.Explicit)]
+public struct ChillPropVariant
+{
+    [FieldOffset(0)] public ushort vt;
+    [FieldOffset(8)] public IntPtr pointer;
+    [FieldOffset(8)] public long padding1;
+    [FieldOffset(16)] public long padding2;
+}
+
 public static class ChillNative
 {
     [DllImport("powrprof.dll")] private static extern uint PowerGetActiveScheme(IntPtr root, out IntPtr guid);
@@ -78,6 +106,9 @@ public static class ChillNative
     [DllImport("kernel32.dll")] private static extern IntPtr LocalFree(IntPtr mem);
     [DllImport("kernel32.dll")] private static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS status);
     [DllImport("kernel32.dll")] private static extern IntPtr GetConsoleWindow();
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)] private static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
+    [DllImport("shell32.dll")] private static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid iid, [Out, MarshalAs(UnmanagedType.Interface)] out IChillPropertyStore store);
+    [DllImport("ole32.dll")] private static extern int PropVariantClear(ref ChillPropVariant pv);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hwnd, int cmd);
     [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW")] private static extern bool SpiGetBool(uint action, uint uiParam, ref int pvParam, uint winIni);
     [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW")] private static extern bool SpiSet(uint action, uint uiParam, IntPtr pvParam, uint winIni);
@@ -196,6 +227,42 @@ public static class ChillNative
     {
         SYSTEM_POWER_STATUS s; GetSystemPowerStatus(out s);
         return s.BatteryLifeTime < 0 ? -1 : s.BatteryLifeTime / 60;
+    }
+
+    // ---------------- taskbar identity ----------------
+    // Gives the app its own taskbar button + icon instead of grouping under powershell.exe.
+    public static void SetProcessAppId(string appId)
+    {
+        SetCurrentProcessExplicitAppUserModelID(appId);
+    }
+
+    private static readonly Guid AppUserModelFmtId = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3");
+
+    private static void SetStringProp(IChillPropertyStore store, uint pid, string value)
+    {
+        ChillPropertyKey key = new ChillPropertyKey(AppUserModelFmtId, pid);
+        ChillPropVariant pv = new ChillPropVariant();
+        pv.vt = 31; // VT_LPWSTR
+        pv.pointer = Marshal.StringToCoTaskMemUni(value);
+        try { store.SetValue(ref key, ref pv); }
+        finally { PropVariantClear(ref pv); }
+    }
+
+    // Window-level AppUserModel properties so a pinned taskbar button relaunches Chill Mode with its icon.
+    public static void SetWindowAppProps(IntPtr hwnd, string appId, string relaunchCommand, string iconResource, string displayName)
+    {
+        Guid iid = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
+        IChillPropertyStore store;
+        if (SHGetPropertyStoreForWindow(hwnd, ref iid, out store) != 0 || store == null) return;
+        try
+        {
+            SetStringProp(store, 5, appId);              // System.AppUserModel.ID
+            SetStringProp(store, 2, relaunchCommand);    // RelaunchCommand
+            SetStringProp(store, 3, iconResource);       // RelaunchIconResource
+            SetStringProp(store, 4, displayName);        // RelaunchDisplayNameResource
+            store.Commit();
+        }
+        finally { Marshal.ReleaseComObject(store); }
     }
 
     // ---------------- misc ----------------
@@ -981,6 +1048,8 @@ if ($script:CliMode) {
 # GUI
 # ---------------------------------------------------------------------------
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
+$script:AppId = 'corum86.ChillMode'
+try { [ChillNative]::SetProcessAppId($script:AppId) } catch { }
 [ChillNative]::HideConsole()
 
 [xml]$xaml = @'
@@ -1196,6 +1265,15 @@ if (Test-Path $iconPath) {
         $script:Win.FindName('HeaderIcon').Source = $big
     } catch { }
 }
+
+$script:Win.Add_SourceInitialized({
+    try {
+        $hwnd = (New-Object Windows.Interop.WindowInteropHelper($script:Win)).Handle
+        $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $cmd = "`"$psExe`" -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File `"$script:ScriptPath`""
+        [ChillNative]::SetWindowAppProps($hwnd, $script:AppId, $cmd, "$iconPath,0", $script:AppName)
+    } catch { }
+})
 
 $bc = New-Object Windows.Media.BrushConverter
 function Brush([string]$Hex) { $bc.ConvertFromString($Hex) }

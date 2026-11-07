@@ -6,7 +6,7 @@ Unicode true
 SetCompressor /SOLID lzma
 
 !ifndef VERSION
-  !define VERSION "1.1.0"
+  !define VERSION "1.1.1"
 !endif
 !define APPNAME   "Chill Mode"
 !define APPKEY    "ChillMode"
