@@ -96,5 +96,5 @@ Browser settings are applied as policies, so the browser will show *"Managed by 
 
 ## Building
 
-* **Installer:** run `makensis -DVERSION=1.1.1 installer/ChillMode.nsi` (NSIS 3; works on Windows or Linux). The output goes to `dist/`. Pushing a `v*` tag makes GitHub Actions build the installer and attach it to a release.
+* **Installer:** run `makensis -DVERSION=1.1.2 installer/ChillMode.nsi` (NSIS 3; works on Windows or Linux). The output goes to `dist/`. Pushing a `v*` tag makes GitHub Actions build the installer and attach it to a release.
 * **Icon:** run `python3 tools/make_icon.py` (needs Pillow). It regenerates `assets/ChillMode.ico` (16-256 px) and `assets/ChillMode.png`.

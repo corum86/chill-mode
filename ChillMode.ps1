@@ -32,7 +32,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $script:AppName    = 'Chill Mode'
-$script:AppVersion = '1.1.1'
+$script:AppVersion = '1.1.2'
 $script:CliMode    = [bool]($Preset -or $Restore)
 $script:ScriptPath = $PSCommandPath
 
