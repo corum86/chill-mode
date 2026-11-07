@@ -38,6 +38,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          notes="release-notes/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then notes_arg=(--notes-file "$notes"); else notes_arg=(--generate-notes); fi
           gh release create "$GITHUB_REF_NAME" dist/*.exe \
-            --title "Chill Mode ${{ steps.ver.outputs.version }}" \
-            --notes "Download **ChillMode-Setup-${{ steps.ver.outputs.version }}.exe**, run it and accept the admin prompt."
+            --title "Chill Mode ${{ steps.ver.outputs.version }} - One-click battery optimizer for Windows" \
+            "${notes_arg[@]}"
